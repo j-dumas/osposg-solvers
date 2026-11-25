@@ -1,0 +1,79 @@
+hosts: 
+  - name: ws1
+    impact: 3
+  - name: ws2
+    impact: 2
+  - name: scada
+    impact: 8
+  - name: plc
+    impact: 10
+
+zones:  
+  - name: z1
+    eta: 0.2
+    hosts: [ws1, ws2]
+  - name: z2
+    eta: 0.35
+    hosts: [scada, plc]
+
+edges: 
+  - src: ws1
+    dst: ws2
+    vuln: v1
+  - src: ws1
+    dst: scada
+    vuln: v2
+  - src: ws2
+    dst: scada
+    vuln: v3
+  - src: scada
+    dst: plc
+    vuln: v4
+
+vulns:
+  - name: v1
+    success: 0.859
+  - name: v2
+    success: 0.392
+  - name: v3
+    success: 0.795
+  - name: v4
+    success: 0.646
+
+controls:
+  - name: c1
+    cost: 8
+    mitigations: 
+      - vuln: v2
+        factor: 0.8
+      - vuln: v3
+        factor: 0.8
+  - name: c2
+    cost: 5
+    mitigations:
+      - vuln: v1
+        factor: 0.7
+      - vuln: v2
+        factor: 0.3
+      - vuln: v4
+        factor: 0.6
+  - name: c3
+    cost: 3
+    mitigations:
+      - vuln: v1
+        factor: 0.5
+      - vuln: v3
+        factor: 0.5
+  - name: c4
+    cost: 4
+    mitigations:
+      - vuln: v4
+        factor: 0.9
+
+model: 
+  discount: 0.95
+  initial_foothold:
+    - host: ws1
+      weight: 0.7
+    - host: ws2
+      weight: 0.3

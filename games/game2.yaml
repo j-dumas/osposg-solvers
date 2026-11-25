@@ -1,0 +1,141 @@
+# Example game in thesis
+hosts: 
+  - name: ws1
+    impact: 3
+  - name: ws2
+    impact: 2
+  - name: scada
+    impact: 8
+  - name: hmi
+    impact: 5
+  - name: plc1
+    impact: 7
+  - name: plc2
+    impact: 10
+
+zones:  
+  - name: z1
+    eta: 0.45
+    hosts: [ws1, ws2]
+  - name: z2
+    eta: 0.35
+    hosts: [scada, hmi]
+  - name: z3
+    eta: 0.2
+    hosts: [plc1, plc2]
+
+edges: 
+  - src: ws1
+    dst: ws2
+    vuln: v1
+  - src: ws1
+    dst: scada
+    vuln: v2
+  - src: ws2
+    dst: scada
+    vuln: v3
+  - src: scada
+    dst: hmi
+    vuln: v4
+  - src: scada
+    dst: plc1
+    vuln: v5
+  - src: scada
+    dst: plc2
+    vuln: v6
+  - src: hmi
+    dst: plc1
+    vuln: v7
+  - src: hmi
+    dst: plc2
+    vuln: v8
+  - src: plc1
+    dst: plc2
+    vuln: v9
+  - src: plc2
+    dst: plc1
+    vuln: v10
+
+vulns:
+  - name: v1
+    success: 0.859
+  - name: v2
+    success: 0.392
+  - name: v3
+    success: 0.795
+  - name: v4 
+    success: 0.555
+  - name: v5
+    success: 0.646
+  - name: v6 
+    success: 0.253
+  - name: v7
+    success: 0.646
+  - name: v8
+    success: 0.555
+  - name: v9
+    success: 0.253
+  - name: v10
+    success: 0.514
+
+controls:
+  - name: c1
+    cost: 8
+    mitigations: 
+      - vuln: v2
+        factor: 0.8
+      - vuln: v3
+        factor: 0.8
+  - name: c2
+    cost: 7
+    mitigations:
+      - vuln: v5
+        factor: 0.8
+      - vuln: v6
+        factor: 0.5
+      - vuln: v7
+        factor: 0.4
+      - vuln: v8
+        factor: 0.5
+  - name: c3
+    cost: 8
+    mitigations:
+      - vuln: v7
+        factor: 0.9
+  - name: c4
+    cost: 5
+    mitigations:
+      - vuln: v5
+        factor: 0.3
+      - vuln: v6
+        factor: 0.8
+      - vuln: v9
+        factor: 0.8
+      - vuln: v10
+        factor: 0.7
+  - name: c5
+    cost: 4
+    mitigations:
+      - vuln: v1
+        factor: 0.7
+      - vuln: v2
+        factor: 0.3
+      - vuln: v7
+        factor: 0.6
+  - name: c6
+    cost: 7
+    mitigations:
+      - vuln: v1
+        factor: 0.3
+      - vuln: v3
+        factor: 0.5
+      - vuln: v4
+        factor: 0.5
+
+model: 
+  discount: 0.95
+  initial_foothold:
+    - host: ws1
+      weight: 0.7
+    - host: ws2
+      weight: 0.3
