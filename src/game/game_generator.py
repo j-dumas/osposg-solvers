@@ -1,8 +1,6 @@
-import os
 import yaml
-import argparse
-from spec import *
-from game import Game
+from .spec import *
+from .game import Game
 
 
 def read_game(file_path):
@@ -110,16 +108,3 @@ def write_hsvi(file_name, game):
     header = f"{n_states} 1 {n_defences} {n_attacks} {n_observations} {n_trans} {n_rewards} {discount:.4f}"
     with open(f"hsvi/{file_name}.posg", "w") as file:
         file.write(f"{header}\n{'\n'.join(body)}")
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("game_cfg", help="input game configuration file, in yaml")
-    parser.add_argument("-o", help="output hsvi game format", action="store_true")
-    args = parser.parse_args()
-
-    path = args.game_cfg
-    game = read_game(path)
-
-    if args.o:
-        write_hsvi(os.path.basename(path).split(".")[0], game)

@@ -1,6 +1,6 @@
 from itertools import combinations
 from collections import deque
-from spec import Spec
+from .spec import Spec
 
 
 # Used for everything index needed in the game file for hsvi
