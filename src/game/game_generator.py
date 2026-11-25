@@ -1,4 +1,5 @@
 import yaml
+import numpy as np
 from .spec import *
 from .game import Game
 
@@ -82,23 +83,32 @@ def write_hsvi(file_name, game):
 
     # Section 6. actions per state (p2): list of index of actions, each line is for a state
     for s in range(n_states):
-        body.append(" ".join(map(str, game.attacker_legal[s])))
+        body.append(" ".join(map(str, np.flatnonzero(game.attacker_legal[s]))))
 
     # Section 7. actions per partition (p1): only one partition, list of all actions' indexes
     body.append(" ".join([str(d) for d in range(n_defences)]))
 
     # Section 8. transitions: [s] [d] [a] [o] [s'] [prob]
+    obs_support = [np.flatnonzero(game.O[s2]) for s2 in range(n_states)]
     n_trans = 0
-    for (s, d, a), trans in game.transitions.items():
-        for o, s2, p in trans:
-            body.append(f"{s} {d} {a} {o} {s2} {p:.6f}")
-            n_trans += 1
+    for s in range(n_states):
+        for d in range(n_defences):
+            for a in np.flatnonzero(game.attacker_legal[s]):
+                for s2 in np.flatnonzero(game.T[s, d, a]):
+                    for o in obs_support[s2]:
+                        p = game.T[s, d, a, s2] * game.O[s2, o]
+                        body.append(f"{s} {d} {a} {o} {s2} {p:.10g}")
+                        n_trans += 1
 
     # Section 9. rewards (p1): [s] [d] [a] [reward] (expected immediate reward)
     n_rewards = 0
-    for (s, d, a), r in game.rewards.items():
-        body.append(f"{s} {d} {a} {r:.5g}")
-        n_rewards += 1
+    for s in range(n_states):
+        for d in range(n_defences):
+            for a in np.flatnonzero(game.attacker_legal[s]):
+                r = game.R[s, d, a]
+                if abs(r) > 1e-12:
+                    body.append(f"{s} {d} {a} {r:.10g}")
+                    n_rewards += 1
 
     # Section 10. initial belief: [initial partition] [prob per state]
     body.append(" ".join(map(str, game.initial_belief)))

@@ -1,3 +1,4 @@
+import numpy as np
 from itertools import combinations
 from collections import deque
 from .spec import Spec
@@ -32,23 +33,30 @@ class Game:
     # zones' names or none as keys
     observations: IndexRegistry
 
+    # attack actions 0..n_exploits-1 are real exploits
+    n_exploits: int
+    # attack_end == n_exploits, used when algorithm needs infinite horizon (HSVI)
+    attack_end: int
+
     # --- Rest of Game Model ---
-    gamma: float
-    # s -> attack action idx
-    attacker_legal: list[int]
-    # (s, d, a) possible move -> [(o, s', p)] list of outcomes, as indexes
-    transitions: dict[tuple[int, int, int], list[tuple[int, int, float]]]
-    # (s, d, a) possible move -> reward
-    rewards: dict[tuple[int, int, int], float]
-    # s -> belief
-    initial_belief: list[float]
+    gamma: float 
+    # (S, A) bool: attack action a is playable in state s
+    attacker_legal: np.ndarray
+    # (s, d, a, s2) -> P(s2 | s, d, a), shape (S, D, A, S)
+    T: np.ndarray
+    # (s, o) -> P(o | s), shape (S, Z); the observation depends on the landing state only
+    O: np.ndarray
+    # (s, d, a) -> expected immediate reward, shape (S, D, A)
+    R: np.ndarray
+    # s -> belief, shape (S,)
+    initial_belief: np.ndarray
 
     # --- Helpers ---
     # h -> host idx
     _h_idx: dict[str, int]
     # h -> z
     _zone_of: dict[str, str]
-    # d -> a ->success probability of mitigated attack, as indexes
+    # d -> a -> success probability of mitigated attack, as indexes
     _p_success: list[list[float]]
     # (s, a) -> s2 if the exploit succeeds, useful for transitions without recalculating them, as indexes
     _successors: dict[tuple[int, int], int]
@@ -72,10 +80,6 @@ class Game:
         self.observations = IndexRegistry()
 
         self.gamma = self.spec.gamma
-        self.attacker_legal = []
-        self.transitions = {}
-        self.rewards = {}
-        self.initial_belief = []
 
         self._h_idx = {h.name: i for i, h in enumerate(spec.hosts.values())}
         self._zone_of = {h: z.name for z in self.spec.zones.values() for h in z.hosts}
@@ -88,6 +92,7 @@ class Game:
         self._risks = []
 
         self._build_game()
+        self._validate()
 
     def _build_game(self):
         self._build_actions()
@@ -115,6 +120,7 @@ class Game:
         for h in self.spec.foothold.keys():
             self.states.intern(tuple(1 if x == h else 0 for x in self.spec.hosts))
 
+        legal_lists = []
         s = 0
         while s < len(self.states):  # registry grows while we walk
             state = self.states.to_key[s]
@@ -128,33 +134,22 @@ class Game:
                     self._successors[(s, a)] = s2
                     legal.append(a)
                     out.append((s2, self.spec.vulns[e.vuln].success))
-            self.attacker_legal.append(legal)
+            legal_lists.append(legal)
             self._out.append(out)
             s += 1
 
         # Add end idle action to last state
         for s in range(len(self.states)):
-            if not self.attacker_legal[s]:
-                self.attacker_legal[s] = [self.attack_end]
+            if not legal_lists[s]:
+                legal_lists[s] = [self.attack_end]
                 self._successors[(s, self.attack_end)] = s
 
-    def _build_observations(self):
-        for z in self.spec.zones.keys():
-            self.observations.intern(z)
-        self.observations.intern("none")
-
-    def _build_p_success(self):
-        self._p_success = []
-        for d in self.defences.to_key:
-            p_successes = []
-            for a in self.attacks.to_key[: self.n_exploits]:
-                p_success = 1.0
-                for c in d:
-                    migitation = self.spec.controls[c].mitigations.get(a.vuln, 0.0)
-                    p_success *= 1 - migitation
-                p_successes.append(self.spec.vulns[a.vuln].success * p_success)
-                p_successes.append(1.0)  # end action
-            self._p_success.append(p_successes)
+        # boolean mask instead of a ragged list of lists
+        self.attacker_legal = np.zeros(
+            (len(self.states), len(self.attacks)), dtype=bool
+        )
+        for s, acts in enumerate(legal_lists):
+            self.attacker_legal[s, acts] = True
 
     def _get_obs_distribution(self, s):
         state = self.states.to_key[s]
@@ -168,20 +163,44 @@ class Game:
         )
         return [(o, p) for o, p in dist if p > 0]
 
-    def _build_transitions(self):
-        for s in range(len(self.states)):
-            for d in range(len(self.defences)):
-                for a in self.attacker_legal[s]:
-                    target = self._successors[(s, a)]
-                    p_success = self._p_success[d][a]
+    def _build_observations(self):
+        for z in self.spec.zones.keys():
+            self.observations.intern(z)
+        self.observations.intern("none")
 
-                    trans = []
-                    for new_s, prob_s in [(target, p_success), (s, 1 - p_success)]:
-                        if prob_s <= 0:
-                            continue
-                        for o, prob_o in self._get_obs_distribution(new_s):
-                            trans.append((o, new_s, prob_s * prob_o))
-                    self.transitions[(s, d, a)] = trans
+        self.O = np.zeros((len(self.states), len(self.observations)))
+        for s in range(len(self.states)):
+            for o, p in self._get_obs_distribution(s):
+                self.O[s, o] = p
+
+    def _build_p_success(self):
+        self._p_success = []
+        for d in self.defences.to_key:
+            p_successes = []
+            for a in self.attacks.to_key[: self.n_exploits]:
+                p_success = 1.0
+                for c in d:
+                    migitation = self.spec.controls[c].mitigations.get(a.vuln, 0.0)
+                    p_success *= 1 - migitation
+                p_successes.append(self.spec.vulns[a.vuln].success * p_success)
+            p_successes.append(1.0)  # end action
+            self._p_success.append(p_successes)
+
+    def _build_transitions(self):
+        S, D, A = len(self.states), len(self.defences), len(self.attacks)
+        self.T = np.zeros((S, D, A, S))
+        for s in range(S):
+            for d in range(D):
+                for a in range(A):
+                    if self.attacker_legal[s, a]:
+                        target = self._successors[(s, a)]
+                        p_success = self._p_success[d][a]
+                        # += so the end action (target == s, p_success == 1) stays valid, otherwise rewritten with 1 - 1 = 0
+                        self.T[s, d, a, target] += p_success
+                        self.T[s, d, a, s] += 1 - p_success
+                    else:
+                        # unplayable: harmless self-loop, masked by attacker_legal
+                        self.T[s, d, a, s] = 1.0
 
     def _build_impact(self):
         for s in range(len(self.states)):
@@ -227,25 +246,42 @@ class Game:
         max_risk = max(self._risks)
         max_cost = max(self._costs)
 
-        for (s, d, a), outcomes in self.transitions.items():
-            p_next = {}
-            for o, s2, p in outcomes:
-                # marginalizing observation probabilities
-                p_next[s2] = p_next.get(s2, 0.0) + p
-
-            cost = self._costs[d]
-            total = 0.0
-            for s2, p in p_next.items():
-                reward = -(self._risks[s2] / max_risk) - (cost / max_cost)
-                if s != s2:
-                    reward -= (self._impacts[s2] / max_impact)
-                total += +p * reward
-            self.rewards[(s, d, a)] = total
+        S, D, A = len(self.states), len(self.defences), len(self.attacks)
+        self.R = np.zeros((S, D, A))
+        for s in range(S):
+            for d in range(D):
+                for a in np.flatnonzero(self.attacker_legal[s]):
+                    cost = self._costs[d]
+                    total = 0.0
+                    for s2 in np.flatnonzero(self.T[s, d, a]):
+                        p = self.T[s, d, a, s2]
+                        reward = -(self._risks[s2] / max_risk) - (cost / max_cost)
+                        if s != s2:
+                            reward -= self._impacts[s2] / max_impact
+                        total += p * reward
+                    self.R[s, d, a] = total
 
     def _build_inital_belief(self):
+        belief_list = []
         for s in self.states.to_key:
             belief = 0.0
             for h, p in self.spec.foothold.items():
                 if s == tuple(1 if x == h else 0 for x in self.spec.hosts):
                     belief = p
-            self.initial_belief.append(belief)
+            belief_list.append(belief)
+        self.initial_belief = np.array(belief_list)
+
+    def _validate(self, tol=1e-9):
+        errors = []
+        if not np.allclose(self.T.sum(axis=3), 1.0, atol=tol):
+            errors.append("some T[s, d, a, :] does not sum to 1")
+        if not np.allclose(self.O.sum(axis=1), 1.0, atol=tol):
+            errors.append(
+                "some O[s, :] does not sum to 1 (zone detection rates sum to > 1?)"
+            )
+        if abs(self.initial_belief.sum() - 1.0) > tol:
+            errors.append("initial belief does not sum to 1")
+        if not self.attacker_legal.any(axis=1).all():
+            errors.append("a state has no legal attacker action")
+        if errors:
+            raise ValueError("invalid game:\n  " + "\n  ".join(errors))
