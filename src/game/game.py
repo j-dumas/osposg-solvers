@@ -1,7 +1,8 @@
+import yaml
 import numpy as np
 from itertools import combinations
 from collections import deque
-from .spec import Spec
+from .spec import *
 
 
 # Used for everything index needed in the game file for hsvi
@@ -39,7 +40,7 @@ class Game:
     attack_end: int
 
     # --- Rest of Game Model ---
-    gamma: float 
+    gamma: float
     # (S, A) bool: attack action a is playable in state s
     attacker_legal: np.ndarray
     # (s, d, a, s2) -> P(s2 | s, d, a), shape (S, D, A, S)
@@ -285,3 +286,51 @@ class Game:
             errors.append("a state has no legal attacker action")
         if errors:
             raise ValueError("invalid game:\n  " + "\n  ".join(errors))
+
+
+def read_game(file_path):
+    input = yaml.safe_load(open(file_path))
+    errors = []
+    err = errors.append
+
+    # --- Hosts ---
+    hosts = {h["name"]: Host(h["name"], h["impact"]) for h in input["hosts"]}
+    zones = {z["name"]: Zone(z["name"], z["eta"], z["hosts"]) for z in input["zones"]}
+
+    # --- Attacker actions ---
+    edges = [Edge(e["src"], e["dst"], e["vuln"]) for e in input["edges"]]
+    vulns = {v["name"]: Vuln(v["name"], v["success"]) for v in input["vulns"]}
+
+    # --- Defender actions ---
+    controls = {}
+    for c in input["controls"]:
+        mitigations = {m["vuln"]: m["factor"] for m in c["mitigations"]}
+        controls[c["name"]] = Control(c["name"], c["cost"], mitigations)
+
+    # --- Model ---
+    foothold = {f["host"]: f["weight"] for f in input["model"]["initial_foothold"]}
+    gamma = input["model"]["discount"]
+
+    if sum(z.detection for z in zones.values()) > 1.0 + 1e-9:
+        err(
+            f"zone etas sum to {sum(z.detection for z in zones.values()):.3f}, must be <= 1"
+        )
+
+    if sum(p for p in foothold.values()) > 1.0 + 1e-9:
+        err(
+            f"foothold initial belief sums to {sum(p for p in foothold.values()):.3f}, must be <= 1"
+        )
+
+    if errors:
+        raise SpecError("invalid input:\n  " + "\n  ".join(errors))
+
+    spec = Spec(
+        hosts=hosts,
+        zones=zones,
+        edges=edges,
+        vulns=vulns,
+        controls=controls,
+        foothold=foothold,
+        gamma=gamma,
+    )
+    return Game(spec)

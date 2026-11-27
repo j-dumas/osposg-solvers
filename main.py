@@ -1,7 +1,7 @@
 import os
 import argparse
-from game.game import Game
-from game.game_generator import read_game, write_hsvi
+from game.game import Game, read_game
+from hsvi.generator import write_hsvi
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
