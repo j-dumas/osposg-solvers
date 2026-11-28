@@ -36,7 +36,7 @@ class Game:
 
     # attack actions 0..n_exploits-1 are real exploits
     n_exploits: int
-    # attack_end == n_exploits, used when algorithm needs infinite horizon (HSVI)
+    # attack_end == n_exploits, used when algorithm needs infinite horizon (HSVI, SAB)
     attack_end: int
 
     # --- Rest of Game Model ---
@@ -109,7 +109,7 @@ class Game:
         for e in self.spec.edges:
             self.attacks.intern(e)
         self.n_exploits = len(self.attacks)
-        self.attack_end = self.attacks.intern("end")
+        self.attack_idle = self.attacks.intern("idle")
 
         for i in range(len(self.spec.controls) + 1):
             for action in combinations(self.spec.controls.keys(), i + 1):
@@ -142,8 +142,8 @@ class Game:
         # Add end idle action to last state
         for s in range(len(self.states)):
             if not legal_lists[s]:
-                legal_lists[s] = [self.attack_end]
-                self._successors[(s, self.attack_end)] = s
+                legal_lists[s] = [self.attack_idle]
+                self._successors[(s, self.attack_idle)] = s
 
         # boolean mask instead of a ragged list of lists
         self.attacker_legal = np.zeros(
@@ -184,7 +184,7 @@ class Game:
                     migitation = self.spec.controls[c].mitigations.get(a.vuln, 0.0)
                     p_success *= 1 - migitation
                 p_successes.append(self.spec.vulns[a.vuln].success * p_success)
-            p_successes.append(1.0)  # end action
+            p_successes.append(1.0)  # idle action
             self._p_success.append(p_successes)
 
     def _build_transitions(self):
@@ -196,7 +196,7 @@ class Game:
                     if self.attacker_legal[s, a]:
                         target = self._successors[(s, a)]
                         p_success = self._p_success[d][a]
-                        # += so the end action (target == s, p_success == 1) stays valid, otherwise rewritten with 1 - 1 = 0
+                        # += so the idle action (target == s, p_success == 1) stays valid, otherwise rewritten with 1 - 1 = 0
                         self.T[s, d, a, target] += p_success
                         self.T[s, d, a, s] += 1 - p_success
                     else:

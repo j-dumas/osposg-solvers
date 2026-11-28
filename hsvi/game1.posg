@@ -27,7 +27,7 @@ State8[1111] 0
 [Edge1[ws1>scada:v2]]
 [Edge2[ws2>scada:v3]]
 [Edge3[scada>plc:v4]]
-[End]
+[Idle]
 [Observation0[z1]]
 [Observation1[z2]]
 [Observation2[none]]

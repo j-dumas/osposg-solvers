@@ -99,7 +99,7 @@ State26[111111] 0
 [Edge7[hmi>plc2:v8]]
 [Edge8[plc1>plc2:v9]]
 [Edge9[plc2>plc1:v10]]
-[End]
+[Idle]
 [Observation0[z1]]
 [Observation1[z2]]
 [Observation2[z3]]

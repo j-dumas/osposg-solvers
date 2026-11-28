@@ -24,7 +24,7 @@ def write_hsvi(file_name, game):
     # Section 4. attack actions (p2): "name"
     for i, (src, dst, v) in enumerate(game.attacks.to_key[: game.n_exploits]):
         body.append(f"[Edge{i}[{src}>{dst}:{v}]]")
-    body.append(f"[End]")
+    body.append(f"[Idle]")
 
     # Section 5. observations: "name"
     for i, obs in enumerate(game.observations.to_key):
